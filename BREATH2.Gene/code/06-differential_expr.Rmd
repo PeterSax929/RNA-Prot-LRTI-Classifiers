@@ -8,12 +8,15 @@ output:
 ```{r, warning=F, message=F}
 
 
-library(edgeR)
-library(limma)
 library(dplyr)
-library(tibble)
+library(edgeR)
 library(ggplot2)
 library(ggrepel)
+library(limma)
+library(openxlsx)
+library(tibble)
+
+source("../../00-constants.R")
 
 
 
@@ -23,22 +26,33 @@ library(ggrepel)
 # 6.1. Import data
 
 
-data_dir <- "C:/Users/peter/OneDrive/Documents/UCSF/BREATH2.Gene/data"
-raw_data_dir <- "C:/Users/peter/OneDrive/Documents/UCSF/raw_data"
-results_dir <- "C:/Users/peter/OneDrive/Documents/UCSF/BREATH2.Gene/results"
-
-
 metadata_df_with_folds <- read.csv(
-  file.path(data_dir, "metadata_df_with_folds.csv"),
-  stringsAsFactors=F)
+  file.path(gene_data_dir, "metadata_df_with_folds.csv"),
+  stringsAsFactors=F
+)
 
 host_counts <- read.csv(
   file.path(raw_data_dir, "host_gene_counts.csv"),
-  stringsAsFactors=F, row.names=1)[, -1]
+  stringsAsFactors=F,
+  row.names=1
+)[, -1]
 
-counts <- host_counts[, metadata_df_with_folds$sample_name, drop=F]
+# Import gene ID-to-symbol mapping
+ensg2gene <- read.csv(
+  file.path(raw_data_dir, "host_gene_counts.csv"),
+  stringsAsFactors=F
+) %>%
+  dplyr::select(X, gene_symbol)
 
-stopifnot(all(colnames(counts) == metadata_df_with_folds$sample_name))
+# Match counts to metadata sample order
+counts <- host_counts[,
+  metadata_df_with_folds$sample_name,
+  drop=F
+]
+
+stopifnot(
+  all(colnames(counts) == metadata_df_with_folds$sample_name)
+)
 
 
 
@@ -50,15 +64,18 @@ stopifnot(all(colnames(counts) == metadata_df_with_folds$sample_name))
 
 group <- factor(
   metadata_df_with_folds$LRTI_adjudication,
-  levels=c("No Evidence", "Definite"))
+  levels=c("No Evidence", "Definite")
+)
 
-dge <- DGEList(counts=counts, group=group)
+dge <- DGEList(
+  counts=counts,
+  group=group
+)
 
 keep <- rowSums(dge$counts > 10) > 0.2 * ncol(dge$counts)
-dge  <- dge[keep, , keep.lib.sizes=F]
-dge  <- calcNormFactors(dge, method="TMM")
 
-dim(dge)
+dge <- dge[keep, , keep.lib.sizes=F]
+dge <- calcNormFactors(dge, method="TMM")
 
 
 
@@ -68,15 +85,29 @@ dim(dge)
 # 6.3. voom transformation
 
 
-metadata_df_with_folds$sex          <- factor(metadata_df_with_folds$sex)
-metadata_df_with_folds$age_in_years <- as.numeric(metadata_df_with_folds$age_in_years)
+metadata_df_with_folds$sex <- factor(
+  metadata_df_with_folds$sex
+)
 
-design <- model.matrix(~group + age_in_years + sex, data=metadata_df_with_folds)
+metadata_df_with_folds$age_in_years <- as.numeric(
+  metadata_df_with_folds$age_in_years
+)
 
-v <- voom(dge, design, plot=T)
+design <- model.matrix(
+  ~group + age_in_years + sex,
+  data=metadata_df_with_folds
+)
 
-colnames(design)
-dim(v$E)
+stopifnot(
+  nrow(design) == ncol(dge$counts),
+  !anyNA(design)
+)
+
+v <- voom(
+  dge,
+  design,
+  plot=F
+)
 
 
 
@@ -89,9 +120,12 @@ dim(v$E)
 fit <- lmFit(v, design)
 fit <- eBayes(fit)
 
-colnames(coef(fit))
-
-de_results <- topTable(fit, coef="groupDefinite", number=Inf, sort.by="P") %>%
+de_results <- topTable(
+  fit,
+  coef="groupDefinite",
+  number=Inf,
+  sort.by="P"
+) %>%
   as.data.frame() %>%
   rownames_to_column("gene")
 
@@ -106,16 +140,23 @@ de_results <- topTable(fit, coef="groupDefinite", number=Inf, sort.by="P") %>%
 res_df <- de_results %>%
   dplyr::rename(
     log2FoldChange = logFC,
-    padj           = adj.P.Val
+    padj = adj.P.Val
   ) %>%
   mutate(
-    padj           = ifelse(is.na(padj), 1, padj),
+    padj = ifelse(is.na(padj), 1, padj),
     log2FoldChange = ifelse(is.na(log2FoldChange), 0, log2FoldChange),
-    negLog10P      = -log10(padj + 1e-300)
+    negLog10P = -log10(padj + 1e-300)
   )
 
-res_df$gene_symbol <- ensg2gene$gene_symbol[match(res_df$gene, ensg2gene$X)]
-res_df$gene_symbol[is.na(res_df$gene_symbol)] <- res_df$gene[is.na(res_df$gene_symbol)]
+res_df$gene_symbol <- ensg2gene$gene_symbol[
+  match(res_df$gene, ensg2gene$X)
+]
+
+res_df$gene_symbol[
+  is.na(res_df$gene_symbol)
+] <- res_df$gene[
+  is.na(res_df$gene_symbol)
+]
 
 res_df <- res_df %>%
   mutate(
@@ -132,90 +173,168 @@ res_df <- res_df %>%
 
 
 
-# 6.6. Volcano Plot
+# 6.6. Volcano plot
 
 
 label_data <- bind_rows(
-  res_df %>% filter(direction=="Definite")    %>% arrange(desc(abs(log2FoldChange)), padj) %>% slice_head(n=10),
-  res_df %>% filter(direction=="NoEvidence")  %>% arrange(desc(abs(log2FoldChange)), padj) %>% slice_head(n=10)
+  res_df %>%
+    filter(direction == "Definite") %>%
+    arrange(desc(abs(log2FoldChange)), padj) %>%
+    slice_head(n=10),
+
+  res_df %>%
+    filter(direction == "NoEvidence") %>%
+    arrange(desc(abs(log2FoldChange)), padj) %>%
+    slice_head(n=10)
 )
 
-volcano_plot_gene <- ggplot(res_df, aes(x=log2FoldChange, y=negLog10P)) +
+volcano_plot_gene <- ggplot(
+  res_df,
+  aes(
+    x=log2FoldChange,
+    y=negLog10P
+  )
+) +
 
-  geom_point(aes(color=direction), alpha=0.75, size=2) +
-
-  scale_color_manual(
-    values = c(
-      "Definite"        = "#D55E00",
-      "NoEvidence"      = "#8B4789",
-      "NotSignificant"  = "grey85"),
-    guide = "none"
+  # Differential-expression points
+  geom_point(
+    aes(color=direction),
+    alpha=0.75,
+    size=2
   ) +
 
-  geom_hline(yintercept=-log10(0.05), linetype="dashed",
-             linewidth=0.6, color="grey40") +
+  # Significance threshold
+  geom_hline(
+    yintercept=-log10(0.05),
+    linetype="dashed",
+    linewidth=0.6,
+    color="grey40"
+  ) +
 
-  geom_vline(xintercept=c(-1, 1), linetype="dotted",
-             colour="grey70", linewidth=0.4) +
+  # Fold-change reference lines
+  geom_vline(
+    xintercept=c(-1, 1),
+    linetype="dotted",
+    colour="grey70",
+    linewidth=0.4
+  ) +
 
+  # Label top genes in each direction
   geom_text_repel(
-    data        = label_data,
-    aes(label   = gene_symbol),
-    size        = 14 / 2.845,
-    fontface    = "italic",
-    max.overlaps = Inf,
-    box.padding  = 0.7,
-    point.padding = 0.5,
-    segment.color = "grey60",
-    segment.size  = 0.3
+    data=label_data,
+    aes(label=gene_symbol),
+    size=14 / 2.845,
+    fontface="italic",
+    max.overlaps=Inf,
+    box.padding=0.7,
+    point.padding=0.5,
+    segment.color="grey60",
+    segment.size=0.3
   ) +
 
-  annotate("text",
-    x=0, y=9.5,
-    label  = paste0(format(sum(res_df$sig), big.mark=","), " DE genes"),
-    size   = 16 / 2.845,
-    family = "Arial",
-    colour = "black"
+  # Number of significant genes
+  annotate(
+    "text",
+    x=0,
+    y=9.5,
+    label=paste0(
+      format(sum(res_df$sig), big.mark=","),
+      " DE genes"
+    ),
+    size=16 / 2.845,
+    family="Arial",
+    colour="black"
+  ) +
+
+  # Colors
+  scale_color_manual(
+    values=c(
+      "Definite" = LRTI_color,
+      "NoEvidence" = control_color,
+      "NotSignificant" = "grey85"
+    ),
+    guide="none"
+  ) +
+
+  # Axes and labels
+  scale_y_continuous(
+    expand=expansion(mult=c(0.02, 0.15))
   ) +
 
   labs(
-    x       = expression(log[2]*" fold change"),
-    y       = expression(-log[10](P[adj])),
-    title   = "Transcriptomic differential expression",
-    caption = paste0(
-    "\u2190 Downregulated in LRTI",
-    "        ",
-    "Upregulated in LRTI \u2192"
-  )
-    ) +
+    x=expression(log[2] * " fold change"),
+    y=expression(-log[10](P[adj])),
+    title="Transcriptomic differential expression",
+    caption=paste0(
+      "\u2190 Downregulated in LRTI",
+      "        ",
+      "Upregulated in LRTI \u2192"
+    )
+  ) +
 
-  scale_y_continuous(expand=expansion(mult=c(0.02, 0.15))) +
-
-  theme_classic(base_size=16, base_family="Arial") +
+  # Theme and typography
+  theme_classic(
+    base_family="Arial"
+  ) +
 
   theme(
-    text        = element_text(family="Arial", size=16, face="plain"),
-    axis.title  = element_text(family="Arial", size=16, colour="black", face="plain"),
-    axis.text   = element_text(family="Arial", size=16, colour="black", face="plain"),
-    axis.line   = element_line(colour="black", linewidth=0.5),
-    plot.title  = element_text(family="Arial", size=16, face="plain",
-                               colour="black", hjust=0.5),
-    plot.caption = element_text(hjust=0.5, size=16, color="black", family="Arial"),
-    plot.margin  = ggplot2::margin(10, 15, 10, 10)
+    text=element_text(
+      family="Arial",
+      size=16,
+      face="plain"
+    ),
+    axis.title=element_text(
+      family="Arial",
+      size=16,
+      colour="black",
+      face="plain"
+    ),
+    axis.text=element_text(
+      family="Arial",
+      size=16,
+      colour="black",
+      face="plain"
+    ),
+    axis.line=element_line(
+      colour="black",
+      linewidth=0.5
+    ),
+    plot.title=element_text(
+      family="Arial",
+      size=16,
+      face="plain",
+      colour="black",
+      hjust=0.5
+    ),
+    plot.caption=element_text(
+      hjust=0.5,
+      size=16,
+      color="black",
+      family="Arial"
+    ),
+    plot.margin=ggplot2::margin(10, 15, 10, 10)
   )
 
-print(volcano_plot_gene)
-
-write.csv(res_df, file.path(results_dir, "DE_limma_results_transcriptome.csv"), row.names=F)
+# Save results
+write.csv(
+  res_df,
+  file.path(gene_results_dir, "DE_limma_results_transcriptome.csv"),
+  row.names=F
+)
 
 ggsave(
-  file.path(results_dir, "volcano_transcriptome.pdf"),
-  volcano_plot_gene,
-  width=6.5, height=6.5, device=cairo_pdf, bg="white")
+  file.path(plots_dir, "(2A)_volcano_transcriptome.pdf"),
+  plot=volcano_plot_gene,
+  width=6.5,
+  height=6.5,
+  device=cairo_pdf,
+  bg="white"
+)
 
 saveRDS(
   volcano_plot_gene,
-  file.path(results_dir, "volcano_transcriptome.rds"))
+  file.path(gene_results_dir, "figure2A.rds")
+)
 
 
 

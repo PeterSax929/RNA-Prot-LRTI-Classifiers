@@ -11,7 +11,8 @@ output:
 library(dplyr)
 library(ggplot2)
 library(ggrepel)
-library(openxlsx)
+
+source("../../00-constants.R")
 
 
 
@@ -21,22 +22,14 @@ library(openxlsx)
 # 7.1. Import data
 
 
-results_dir <- "C:/Users/peter/OneDrive/Documents/UCSF/BREATH2.Gene/results"
-
 rna_res <- read.csv(
-  file.path(
-    results_dir,
-    "DE_limma_results_transcriptome.csv"
-  ),
-  stringsAsFactors = F
+  file.path(gene_results_dir, "DE_limma_results_transcriptome.csv"),
+  stringsAsFactors=F
 )
 
 prot_res <- read.csv(
-  file.path(
-    "C:/Users/peter/OneDrive/Documents/UCSF/BREATH2.Prot/results",
-    "DA_results_proteomics.csv"
-  ),
-  stringsAsFactors = F
+  file.path(prot_results_dir, "DA_results_proteomics.csv"),
+  stringsAsFactors=F
 )
 
 
@@ -59,7 +52,7 @@ rna_df <- rna_res %>%
   ) %>%
   distinct(
     gene_symbol,
-    .keep_all = T
+    .keep_all=T
   )
 
 
@@ -75,14 +68,14 @@ prot_df <- prot_res %>%
   ) %>%
   distinct(
     gene_symbol,
-    .keep_all = T
+    .keep_all=T
   )
 
 
 merged_df <- inner_join(
   rna_df,
   prot_df,
-  by = "gene_symbol"
+  by="gene_symbol"
 )
 
 
@@ -105,7 +98,7 @@ merged_df <- merged_df %>%
 
 merged_df$sig_class <- factor(
   merged_df$sig_class,
-  levels = c(
+  levels=c(
     "RNA only",
     "Protein only",
     "RNA & Protein",
@@ -124,23 +117,19 @@ merged_df$sig_class <- factor(
 cor_spearman <- cor(
   merged_df$log2FC_RNA,
   merged_df$log2FC_protein,
-  method = "spearman"
+  method="spearman"
 )
 
-cor_spearman
-
-
-cor_spearman_both <- cor(
-  merged_df %>%
-    filter(sig_class == "RNA & Protein") %>%
-    pull(log2FC_RNA),
-  merged_df %>%
-    filter(sig_class == "RNA & Protein") %>%
-    pull(log2FC_protein),
-  method = "spearman"
-)
-
-cor_spearman_both
+cor_spearman_both <- merged_df %>%
+  filter(sig_class == "RNA & Protein") %>%
+  summarise(
+    correlation = cor(
+      log2FC_RNA,
+      log2FC_protein,
+      method="spearman"
+    )
+  ) %>%
+  pull(correlation)
 
 
 
@@ -163,24 +152,23 @@ label_df <- merged_df %>%
   group_by(quadrant) %>%
   slice_max(
     concordance,
-    n = 4
+    n=4
   ) %>%
   ungroup() %>%
   bind_rows(
     merged_df %>%
       filter(sig_class == "RNA & Protein") %>%
       mutate(
-        concordance = sign(log2FC_RNA) == sign(log2FC_protein),
         combined_fc = abs(log2FC_RNA) + abs(log2FC_protein)
       ) %>%
       slice_max(
         combined_fc,
-        n = 12
+        n=12
       )
   ) %>%
   distinct(
     gene_symbol,
-    .keep_all = TRUE
+    .keep_all=T
   )
 
 
@@ -194,197 +182,154 @@ label_df <- merged_df %>%
 concordance_plot <- ggplot(
   merged_df,
   aes(
-    x = log2FC_RNA,
-    y = log2FC_protein,
-    color = sig_class
-  )
-) +
-
-  geom_point(
-    data = merged_df %>%
-      filter(sig_class == "Not Significant"),
-    aes(size = point_size),
-    alpha = 0.18
+    x=log2FC_RNA,
+    y=log2FC_protein,
+    color=sig_class
+    )
   ) +
 
+  # Non-significant analytes
   geom_point(
-    data = merged_df %>%
+    data=merged_df %>%
+      filter(sig_class == "Not Significant"),
+    aes(size=point_size),
+    alpha=0.18
+  ) +
+
+  # Significant analytes
+  geom_point(
+    data=merged_df %>%
       filter(sig_class != "Not Significant"),
-    aes(size = point_size),
-    alpha = 0.90
+    aes(size=point_size),
+    alpha=0.90
   ) +
 
   scale_size_identity() +
 
+  # Label selected genes significant in both datasets
   geom_text_repel(
-    data = label_df,
-    aes(label = gene_symbol),
-    size = 3.2,
-    fontface = "plain",
-    box.padding = 0.5,
-    segment.color = "grey60",
-    segment.size = 0.3,
-    max.overlaps = 25,
-    show.legend = FALSE
+    data=label_df,
+    aes(label=gene_symbol),
+    size=14 / 2.845,
+    fontface="plain",
+    box.padding=0.5,
+    point.padding=0.5,
+    segment.color="grey60",
+    segment.size=0.3,
+    max.overlaps=25,
+    show.legend=F
   ) +
 
+  # Zero reference lines
   geom_hline(
-    yintercept = 0,
-    linetype = "dotted",
-    color = "grey70",
-    linewidth = 0.4
+    yintercept=0,
+    linetype="dotted",
+    color="grey70",
+    linewidth=0.4
   ) +
 
   geom_vline(
-    xintercept = 0,
-    linetype = "dotted",
-    color = "grey70",
-    linewidth = 0.4
+    xintercept=0,
+    linetype="dotted",
+    color="grey70",
+    linewidth=0.4
   ) +
 
+  # Significance categories
   scale_color_manual(
-    values = c(
+    values=c(
       "RNA & Protein" = "purple",
-      "RNA only" = "#0072B2",
-      "Protein only" = "#009E73",
+      "RNA only" = gene_color,
+      "Protein only" = protein_color,
       "Not Significant" = "grey85"
     ),
-    breaks = c(
+    breaks=c(
       "RNA & Protein",
       "RNA only",
       "Protein only"
     )
   ) +
-  
+
+  # Axes
   scale_y_continuous(
-    limits = c(-5, 5), 
-    labels = function(x) sprintf("%.1f", x)
+    limits=c(-5, 5),
+    labels=function(x) sprintf("%.1f", x)
   ) +
 
-  theme_classic(
-    base_size = 16,
-    base_family = "Arial"
-  ) +
-
+  # Labels and title
   labs(
-    x = expression("Transcriptome log"[2] * " fold change"),
-    y = expression("Proteome log"[2] * " fold change"),
-    title = "Concordance of LRTI-associated features",
-    color = NULL
+    x=expression("Transcriptome log"[2] * " fold change"),
+    y=expression("Proteome log"[2] * " fold change"),
+    title="Concordance of LRTI-associated features",
+    color=NULL
+  ) +
+
+  # Theme and typography
+  theme_classic(
+    base_family="Arial"
   ) +
 
   theme(
-    text = element_text(
-      family = "Arial",
-      size = 12,
-      face = "plain"
+    text=element_text(
+      family="Arial",
+      size=16,
+      face="plain"
     ),
-    axis.title = element_text(
-      family = "Arial",
-      size = 16,
-      colour = "black",
-      face = "plain"
+    axis.title=element_text(
+      family="Arial",
+      size=16,
+      colour="black",
+      face="plain"
     ),
-    axis.text = element_text(
-      family = "Arial",
-      size = 16,
-      colour = "black",
-      face = "plain"
+    axis.text=element_text(
+      family="Arial",
+      size=16,
+      colour="black",
+      face="plain"
     ),
-    axis.line = element_line(
-      colour = "black",
-      linewidth = 0.5
+    axis.line=element_line(
+      colour="black",
+      linewidth=0.5
     ),
-    plot.title = element_text(
-      family = "Arial",
-      size = 16,
-      face = "plain",
-      colour = "black",
-      hjust = 0.5
+    plot.title=element_text(
+      family="Arial",
+      size=16,
+      face="plain",
+      colour="black",
+      hjust=0.5
     ),
-    plot.margin = ggplot2::margin(
-      10,
-      15,
-      10,
-      10,
+    plot.margin=ggplot2::margin(
+      10, 15, 10, 10
     ),
-    legend.position = c(0.5, 0.08),
-    legend.direction = "horizontal",
-    legend.title = element_blank(),
-    legend.text = element_text(
-      family = "Arial",
-      size = 16,
-      face = "plain"
+    legend.position=c(0.5, 0.06),
+    legend.direction="horizontal",
+    legend.title=element_blank(),
+    legend.text=element_text(
+      family="Arial",
+      size=16,
+      face="plain"
     ),
-    legend.key.size = unit(
+    legend.key.size=grid::unit(
       1.2,
       "lines"
     )
   )
 
-
-print(concordance_plot)
-
-
+# Export to PDF
 ggsave(
-  file.path(
-    results_dir,
-    "RNA_protein_LFC_concordance.pdf"
-  ),
-  concordance_plot,
-  width = 6.5,
-  height = 6.5,
-  device = cairo_pdf,
-  bg = "white"
+  file.path(plots_dir, "(3B)_RNA_protein_LFC_concordance.pdf"),
+  plot=concordance_plot,
+  width=6.5,
+  height=6.5,
+  device=cairo_pdf,
+  bg="white"
 )
 
-# Save Figure 3B plot object for patchwork
+# Save plot object for patchwork
 saveRDS(
   concordance_plot,
-  file.path(
-    results_dir,
-    "figure3B_RNA_protein_concordance.rds"
+  file.path(gene_results_dir, "figure3B.rds"
   )
-)
-
-
-
-
-
-
-# 7.6. Export merged results
-
-
-write.xlsx(
-  merged_df,
-  file.path(
-    results_dir,
-    "lfc_rna_protein_concordance.xlsx"
-  )
-)
-
-
-discordant_df <- merged_df %>%
-  filter(
-    log2FC_RNA * log2FC_protein < 0
-  ) %>%
-  dplyr::select(
-    gene_symbol,
-    log2FC_RNA,
-    padj_RNA,
-    log2FC_protein,
-    padj_protein,
-    sig_class
-  )
-
-
-write.csv(
-  discordant_df,
-  file.path(
-    results_dir,
-    "discordant_RNA_protein_genes.csv"
-  ),
-  row.names = FALSE
 )
 
 

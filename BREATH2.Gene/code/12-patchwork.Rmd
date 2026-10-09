@@ -1,0 +1,506 @@
+---
+title: "12-patchwork"
+output: 
+  html_notebook:
+    toc: true
+---
+
+
+```{r, warning=F}
+
+
+library(ggplot2)
+library(patchwork)
+
+source("../../00-constants.R")
+
+
+
+
+
+
+# 12 - Figure 2
+
+
+# Import Figure 2A
+p2A <- readRDS(
+  file.path(gene_results_dir, "figure2A.rds")
+)
+
+# Import Figure 2B
+p2B <- readRDS(
+  file.path(prot_results_dir, "figure2B.rds")
+)
+
+# Import Figure 2C
+p2C <- readRDS(
+  file.path(gene_results_dir, "figure2C.rds")
+)
+
+
+
+# Figure 2 assembly
+
+p2A <- p2A +
+  theme(
+    aspect.ratio=1,
+    plot.margin=margin(
+      t=10,
+      r=10,
+      b=40,
+      l=10
+    )
+  )
+
+p2B <- p2B +
+  theme(
+    aspect.ratio=1,
+    plot.caption=element_text(
+      margin=margin(t=-15)
+    ),
+    plot.margin=margin(
+      t=300,
+      r=15,
+      b=10,
+      l=10
+    )
+  )
+
+figure_2 <- (
+  p2A /
+  p2B
+) | p2C
+
+
+figure_2 <- figure_2 +
+  plot_layout(
+    widths=c(8, 8),
+    heights=c(6.2, 6.8)
+  ) &
+  theme(
+    plot.margin=margin(
+      t=10,
+      r=20,
+      b=10,
+      l=20
+    )
+  )
+
+
+figure_2 <- figure_2 +
+  plot_annotation(
+    tag_levels="A",
+    theme=theme(
+      plot.tag=element_text(
+        size=12,
+        family="Arial",
+        face="plain"
+      )
+    )
+  )
+
+
+# Export Figure 2
+
+ggsave(
+  file.path(plots_dir, "Figure_2.pdf"),
+  figure_2,
+  width=16,
+  height=13,
+  device=cairo_pdf,
+  bg="white"
+)
+
+
+
+
+
+
+# 12 - Figure 3
+
+
+# Import Figure 3 plot objects
+
+p3A <- readRDS(
+  file.path(gene_results_dir, "figure3A.rds")
+)
+
+p3B <- readRDS(
+  file.path(gene_results_dir, "figure3B.rds")
+)
+
+p3C <- readRDS(
+  file.path(gene_results_dir, "figure3C.rds")
+)
+
+p3D <- readRDS(
+  file.path(gene_results_dir, "figure3D.rds")
+)
+
+p3E <- readRDS(
+  file.path(gene_results_dir, "figure3E.rds")
+)
+
+p3F <- readRDS(
+  file.path(gene_results_dir, "figure3F.rds")
+)
+
+
+# Combine Figure 3 panels
+
+p3A <- p3A +
+  theme(
+    aspect.ratio=1
+  )
+
+p3B <- p3B +
+  theme(
+    aspect.ratio=1
+  )
+
+p3C <- p3C +
+  theme(
+    aspect.ratio=1
+  )
+
+p3D <- p3D +
+  theme(
+    aspect.ratio=1
+  )
+
+p3E <- p3E +
+  theme(
+    aspect.ratio=1
+  )
+
+p3F <- p3F +
+  theme(
+    aspect.ratio=1
+  )
+
+
+figure_3 <- (
+  p3A | p3B
+) /
+(
+  p3C | p3D
+) /
+(
+  p3E | p3F
+)
+
+
+figure_3 <- figure_3 +
+  plot_layout(
+    widths=c(1, 1),
+    heights=c(1, 1, 1)
+  ) &
+  theme(
+    plot.margin=ggplot2::margin(
+      t=15,
+      r=35,
+      b=15,
+      l=25
+    )
+  )
+
+
+figure_3 <- figure_3 +
+  plot_annotation(
+    tag_levels="A",
+    theme=theme(
+      plot.tag=element_text(
+        size=12,
+        family="Arial",
+        face="plain"
+      )
+    )
+  )
+
+
+# Export Figure 3
+
+ggsave(
+  file.path(plots_dir, "Figure_3.pdf"),
+  figure_3,
+  width=14,
+  height=21,
+  device=cairo_pdf,
+  bg="white"
+)
+
+
+
+
+
+
+
+# 12 - Figure 4
+
+
+p4A <- readRDS(
+  file.path(gene_results_dir, "figure4A.rds")
+)
+
+p4B <- readRDS(
+  file.path(gene_results_dir, "figure4B.rds")
+)
+
+p4C <- readRDS(
+  file.path(prot_results_dir, "figure4C.rds")
+)
+
+p4D <- readRDS(
+  file.path(gene_results_dir, "figure4D.rds")
+)
+
+p4E <- readRDS(
+  file.path(gene_results_dir, "figure4E.rds")
+)
+
+p4F <- readRDS(
+  file.path(gene_results_dir,"figure4F.rds")
+)
+
+
+# Make Figure 4
+
+figure_4 <- (
+  wrap_elements(full = p4A) | p4B | p4C
+) /
+(
+  p4D | p4E | p4F
+)
+
+figure_4 <- figure_4 +
+  plot_layout(
+    widths = c(1, 1, 1),
+    heights = c(1, 1)
+  ) &
+  theme(
+    plot.margin = margin(
+      t = 15,
+      r = 35,
+      b = 15,
+      l = 35
+    )
+  )
+
+
+# Add panel labels
+
+figure_4 <- figure_4 +
+  plot_annotation(
+    tag_levels = "A",
+    theme = theme(
+      plot.tag = element_text(
+        size = 12,
+        family = "Arial",
+        face = "plain"
+      ),
+      plot.tag.position = c(0, 1)
+    )
+  )
+
+
+# Export Figure 4
+
+ggsave(
+  file.path(plots_dir, "Figure_4.pdf"),
+  figure_4,
+  width = 21,
+  height = 14,
+  device = cairo_pdf,
+  bg = "white"
+)
+
+
+
+
+
+
+# 12 - Figure S3
+
+
+# Import Figure S3 plot objects
+
+
+pS3A <- readRDS(
+  file.path(gene_results_dir, "figureS3A.rds")
+)
+
+pS3B <- readRDS(
+  file.path(gene_results_dir, "figureS3B.rds")
+)
+
+
+# Make panels square
+
+pS3A <- pS3A +
+  theme(
+    aspect.ratio = 1
+  )
+
+pS3B <- pS3B +
+  theme(
+    aspect.ratio = 1
+  )
+
+
+# Combine Figure S3 panels
+
+figure_S3 <- (
+  pS3A | pS3B
+)
+
+
+figure_S3 <- figure_S3 +
+  plot_layout(
+    widths = c(1, 1)
+  ) &
+  theme(
+    plot.margin = ggplot2::margin(
+      t = 15,
+      r = 35,
+      b = 15,
+      l = 25
+    )
+  )
+
+
+# Add panel labels
+
+figure_S3 <- figure_S3 +
+  plot_annotation(
+    tag_levels = "A",
+    theme = theme(
+      plot.tag = element_text(
+        size = 12,
+        family = "Arial",
+        face = "plain"
+      )
+    )
+  )
+
+
+# Export Figure S3
+
+ggsave(
+  file.path(plots_dir, "Figure_S3.pdf"),
+  figure_S3,
+  width = 13,
+  height = 6.5,
+  device = cairo_pdf,
+  bg = "white"
+)
+
+
+
+
+
+
+# 12 - Figure S6
+
+
+# Import Figure S6 plot objects
+
+pS6A <- readRDS(
+  file.path(gene_results_dir, "figureS6A.rds")
+)
+
+pS6B <- readRDS(
+  file.path(gene_results_dir, "figureS6B.rds")
+)
+
+pS6C <- readRDS(
+  file.path(gene_results_dir, "figureS6C.rds"
+  )
+)
+
+pS6D <- readRDS(
+  file.path(gene_results_dir, "figureS6D.rds")
+)
+
+
+# Make panels square
+
+pS6A <- pS6A +
+  theme(
+    aspect.ratio = 1
+  )
+
+pS6B <- pS6B +
+  theme(
+    aspect.ratio = 1
+  )
+
+pS6C <- pS6C +
+  theme(
+    aspect.ratio = 1
+  )
+
+pS6D <- pS6D +
+  theme(
+    aspect.ratio = 1
+  )
+
+
+# Combine Figure S6 panels
+
+figure_S6 <- (
+  pS6A | pS6B
+) /
+(
+  pS6C | pS6D
+)
+
+
+figure_S6 <- figure_S6 +
+  plot_layout(
+    widths = c(1, 1),
+    heights = c(1, 1)
+  ) &
+  theme(
+    plot.margin = ggplot2::margin(
+      t = 15,
+      r = 35,
+      b = 15,
+      l = 25
+    )
+  )
+
+
+# Add panel labels
+
+figure_S6 <- figure_S6 +
+  plot_annotation(
+    tag_levels = "A",
+    theme = theme(
+      plot.tag = element_text(
+        size = 12,
+        family = "Arial",
+        face = "plain"
+      )
+    )
+  )
+
+
+
+# Export Figure S6
+
+ggsave(
+  file.path(plots_dir, "Figure_S6.pdf"),
+  figure_S6,
+  width = 13,
+  height = 13,
+  device = cairo_pdf,
+  bg = "white"
+)
+
+
+
+
+
+
+```
+

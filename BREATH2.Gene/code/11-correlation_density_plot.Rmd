@@ -1,0 +1,321 @@
+---
+title: "13-correlation_density_plot"
+output: 
+  html_notebook:
+    toc: true
+---
+
+```{r, warning=F}
+
+
+library(dplyr)
+library(ggplot2)
+library(tibble)
+library(tidyr)
+
+source("../../00-constants.R")
+
+
+
+
+
+
+# 11.1 Import Data
+
+
+# Gene matrix
+full_vsd <- read.csv(
+  file.path(gene_data_dir, "vst_oof.csv"),
+  stringsAsFactors = F, check.names = F, row.names = 1
+) %>%
+  rownames_to_column("gene")
+
+# ENSG -> gene symbol mapping
+ensg2gene <- read.csv(
+  file.path(raw_data_dir, "host_gene_counts.csv"),
+  stringsAsFactors = F
+) %>%
+  { setNames(.$gene_symbol, .$X) }
+
+full_vsd <- full_vsd %>%
+  mutate(
+    gene_symbol = ensg2gene[gene],
+    gene_symbol = ifelse(
+      is.na(gene_symbol),
+      gene,
+      gene_symbol
+    )
+  )
+
+# Protein matrix
+protein_mat <- read.csv(
+  file.path(prot_data_dir, "protein_mat.csv"),
+  stringsAsFactors = F, check.names = F
+)
+
+# LASSO fold coefficients: gene workflow
+lasso_coefs_gene <- read.csv(
+  file.path(gene_results_dir, "lasso_fold_coefs.csv"),
+  stringsAsFactors = F
+)
+
+# LASSO fold coefficients: protein workflow
+lasso_coefs_prot <- read.csv(
+  file.path(prot_results_dir, "lasso_fold_coefs.csv"),
+  stringsAsFactors = F
+)
+
+# Metadata
+metadata_df <- read.csv(
+  file.path(gene_data_dir, "metadata_df_with_folds.csv"),
+  stringsAsFactors = F
+)
+
+
+
+
+
+
+# 11.2. Correlation density plot
+
+
+plot_width <- 6.5
+plot_height <- 6.5
+
+plot_font <- "Arial"
+plot_font_size <- 16
+
+shared_genes <- intersect(
+  full_vsd$gene_symbol,
+  colnames(protein_mat)[-1]
+)
+
+cat(
+  "Shared analytes:",
+  length(shared_genes),
+  "\n"
+)
+
+
+
+
+
+
+# 11.2a Compute per-analyte Pearson r
+
+
+cor_per_gene <- full_vsd %>%
+  filter(gene_symbol %in% shared_genes) %>%
+  pivot_longer(
+    cols = -c(gene, gene_symbol),
+    names_to = "sample_name",
+    values_to = "expr_rna"
+  ) %>%
+  inner_join(
+    metadata_df %>%
+      dplyr::select(
+        sample_name,
+        patient_id
+      ),
+    by = "sample_name"
+  ) %>%
+  inner_join(
+    protein_mat %>%
+      { colnames(.)[1] <- "patient_id"; . } %>%
+      mutate(
+        patient_id = as.integer(patient_id)
+      ) %>%
+      pivot_longer(
+        cols = -patient_id,
+        names_to = "gene_symbol",
+        values_to = "expr_protein"
+      ) %>%
+      filter(gene_symbol %in% shared_genes),
+    by = c(
+      "patient_id",
+      "gene_symbol"
+    )
+  ) %>%
+  group_by(gene_symbol) %>%
+  summarize(
+    pearson_r = cor.test(
+      expr_rna,
+      expr_protein,
+      method = "pearson"
+    )$estimate,
+    p_value = cor.test(
+      expr_rna,
+      expr_protein,
+      method = "pearson"
+    )$p.value,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    padj = p.adjust(
+      p_value,
+      method = "BH"
+    )
+  )
+
+summary(cor_per_gene$pearson_r)
+
+
+median_r <- median(
+  cor_per_gene$pearson_r,
+  na.rm = TRUE
+)
+
+iqr_r <- IQR(
+  cor_per_gene$pearson_r,
+  na.rm = TRUE
+)
+
+cat("IQR =", round(iqr_r, 3), "\n")
+
+
+
+
+
+
+# 11.2c. Density plot of per-analyte Pearson r
+
+
+p_density <- ggplot(
+  cor_per_gene,
+  aes(x = pearson_r)
+  ) +
+  
+  geom_density(
+    fill = "#4C72B0",
+    alpha = 0.25,
+    color = "grey25",
+    linewidth = 0.8
+  ) +
+  
+  geom_vline(
+    xintercept = 0,
+    linetype = "solid",
+    color = "black",
+    linewidth = 0.8
+  ) +
+  
+  geom_vline(
+    xintercept = median_r,
+    linetype = "dashed",
+    color = "black",
+    linewidth = 0.7
+  ) +
+  
+  annotate(
+    "text",
+    x = median_r + 0.03,
+    y = Inf,
+    label = paste0(
+      "Median r = ",
+      round(median_r, 3)
+    ),
+    hjust = 0,
+    vjust = 1.5,
+    size = 14 / 2.845,
+    family = plot_font
+  ) +
+  
+  scale_x_continuous(
+    limits = c(-0.5, 0.9),
+    breaks = seq(-0.4, 0.8, 0.2)
+  ) +
+  
+  scale_y_continuous(
+  labels = function(x) sprintf("%.1f", x)
+  ) +
+  
+  labs(
+    title = "RNA-protein concordance",
+    x = "Pearson correlation coefficient",
+    y = "Density"
+  ) +
+  
+  theme_classic(
+    base_size = plot_font_size,
+    base_family = plot_font
+  ) +
+  
+  theme(
+    text = element_text(
+      family = plot_font,
+      size = plot_font_size
+    ),
+    axis.text = element_text(
+      color = "black",
+      size = plot_font_size
+    ),
+    axis.title = element_text(
+      face = "plain"
+    ),
+    plot.title = element_text(
+      hjust = 0.5,
+      face = "plain",
+      size = plot_font_size
+    ),
+    panel.grid = element_blank()
+  )
+
+
+# Export to PDF
+
+ggsave(
+  file.path(plots_dir, "(3A)_correlation_density_plot.pdf"),
+  plot = p_density,
+  width = plot_width,
+  height = plot_height,
+  device = cairo_pdf
+)
+
+# Save Figure 3A plot object for patchwork
+saveRDS(
+  p_density,
+  file.path(gene_results_dir, "figure3A.rds")
+)
+
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

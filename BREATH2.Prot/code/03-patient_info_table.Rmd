@@ -8,6 +8,9 @@ output:
 ```{r, warning=F, message=F}
 
 
+source("../../00-constants.R")
+
+
 
 
 
@@ -15,19 +18,23 @@ output:
 # 3.1. Subset both datasets to Definite/No Evidence
 
 
-# Set file paths
-data_dir <- "C:/Users/peter/OneDrive/Documents/UCSF/BREATH2.Prot/data"
-
 # Include only Definite and No Evidence patients
-patient_info <- patient_info_ALL[patient_info_ALL$LRTI_adjudication %in% 
-                                     c("Definite", "No Evidence"), ]
+patient_info <- patient_info_ALL[
+  patient_info_ALL$LRTI_adjudication %in% 
+    c("Definite", "No Evidence"), 
+]
 
 # Includes only the protein matrix for Definite and No Evidence patients
-protein_mat <- protein_mat_ALL[match(patient_info$patient_id, 
-                                       rownames(protein_mat_ALL)), ]
-write.csv(protein_mat,
-          file.path(data_dir, "protein_mat.csv"),
-          row.names=T)
+protein_mat <- protein_mat_ALL[
+  match(patient_info$patient_id, 
+    rownames(protein_mat_ALL)), 
+]
+
+write.csv(
+  protein_mat,
+  file.path(prot_data_dir,"protein_mat.csv"),
+  row.names=T
+)
 
 
 
@@ -42,29 +49,27 @@ Definite <- table(patient_info$LRTI_adjudication)["Definite"]
 No_Evidence <- table(patient_info$LRTI_adjudication)["No Evidence"]
 npatients <- nrow(patient_info)
 nproteins <- ncol(protein_mat)
-nfolds <- 5
-ntrees <- 10000
 
 # Store parameters as data frame
-Parameters <- data.frame(c(npatients, Definite, No_Evidence, nproteins, nfolds, ntrees))
-row.names(Parameters) = c("Patients", "Definite", "No Evidence", "Proteins", "Folds", "RF Trees")
-colnames(Parameters) = "Count"
+Parameters <- data.frame(
+  Count = c(
+    npatients,
+    Definite,
+    No_Evidence,
+    nproteins,
+    nfolds,
+    ntrees
+  )
+)
 
-print(Parameters)
-
-
-
-
-
-
-# 3.3. Safety Check
-
-
-# Ensures that protein_mat rownames match patient_id column in patient_info
-all(rownames(protein_mat) == patient_info$patient_id)  # Should return TRUE
-
-any(is.na(match(patient_info$patient_id, 
-                rownames(protein_mat_ALL))))  # Should return FALSE
+rownames(Parameters) <- c(
+  "Patients",
+  "Definite",
+  "No Evidence",
+  "Proteins",
+  "Folds",
+  "RF Trees"
+)
 
 
 
@@ -72,3 +77,6 @@ any(is.na(match(patient_info$patient_id,
 
 
 ```
+
+
+

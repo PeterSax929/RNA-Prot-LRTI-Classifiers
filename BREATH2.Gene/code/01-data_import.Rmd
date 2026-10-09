@@ -11,6 +11,8 @@ output:
 library(dplyr)
 library(magrittr)
 
+source("../../00-constants.R")
+
 
 
 
@@ -18,10 +20,6 @@ library(magrittr)
 
 # 1.1. Import metadata
 
-
-# Set directories
-data_dir <- "C:/Users/peter/OneDrive/Documents/UCSF/BREATH2.Gene/data"
-raw_data_dir <- "C:/Users/peter/OneDrive/Documents/UCSF/raw_data"
 
 # Import metadata
 metadata_df_ALL <- read.csv(
@@ -32,7 +30,7 @@ JCI_expanded_metadata <- read.csv(
   file.path(raw_data_dir, "fixed_metadata_10242025.csv"),
   stringsAsFactors=F)
 
-# Import ONLY patient IDs from proteomics file
+# Import patient IDs from proteomics file
 protein_patient_ids <- read.csv(
   file.path(raw_data_dir, "vap_soma_normalized.csv"),
   stringsAsFactors=F) %>%
@@ -91,29 +89,25 @@ metadata_df <- metadata_df_ALL %>%
 Definite <- table(patient_info_ALL$LRTI_adjudication)["Definite"]
 No_Evidence <- table(patient_info_ALL$LRTI_adjudication)["No Evidence"]
 npatients <- Definite + No_Evidence
-nfolds <- 5
-ntrees <- 10000
 
-# Store parameters
-Parameters <- data.frame(c(npatients, Definite, No_Evidence, nfolds, ntrees))
-row.names(Parameters) <- c("Patients", "Definite", "No Evidence", "Folds", "RF Trees")
-colnames(Parameters) <- "Count"
+# Store parameters as data frame
+Parameters <- data.frame(
+  Count = c(
+    npatients,
+    Definite,
+    No_Evidence,
+    nfolds,
+    ntrees
+  )
+)
 
-
-
-
-
-
-# 1.4. Safety Check
-
-
-print(Parameters)  
-
-nrow(metadata_df)  # should be 105
-
-sum(duplicated(metadata_df$sample_name))  # Should be 0
-
-sum(is.na(Meta.Data$SubjectID))  # Should be 0
+rownames(Parameters) <- c(
+  "Patients",
+  "Definite",
+  "No Evidence",
+  "Folds",
+  "RF Trees"
+)
 
 
 

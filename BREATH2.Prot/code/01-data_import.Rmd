@@ -8,6 +8,9 @@ output:
 ```{r, warning=F, message=F}
 
 
+source("../../00-constants.R")
+
+
 
 
 
@@ -15,18 +18,19 @@ output:
 # 1.1. Import metadata and protein matrix
 
 
-# Set file paths
-
-raw_data_dir <- "C:/Users/peter/OneDrive/Documents/UCSF/raw_data"
-
 # Import data from Box
 vap_soma_normalized <- read.csv(
   file.path(raw_data_dir, "vap_soma_normalized.csv"), 
-  stringsAsFactors=F)
+  stringsAsFactors=F
+)
 
 JCI_expanded_metadata <- read.csv(
   file.path(raw_data_dir, "fixed_metadata_10242025.csv"),
-  stringsAsFactors=F)
+  stringsAsFactors=F
+)
+
+
+
 
 
 
@@ -50,11 +54,15 @@ vap_soma_normalized[, prot_cols] <- log2(vap_soma_normalized[, prot_cols])
 patients_vector <- intersect(vap_soma_normalized$patient_id, 
                              JCI_expanded_metadata$SubjectID)
 
-Prot.Data <- vap_soma_normalized[vap_soma_normalized$patient_id %in% patients_vector, ]
-Meta.Data <- JCI_expanded_metadata[JCI_expanded_metadata$SubjectID %in% patients_vector, ]
+Prot.Data <- vap_soma_normalized[
+  vap_soma_normalized$patient_id %in% patients_vector, ]
+
+Meta.Data <- JCI_expanded_metadata[
+  JCI_expanded_metadata$SubjectID %in% patients_vector, ]
 
 # Ensures rows of Meta.Data match those of Prot.Data
-Meta.Data <- Meta.Data[match(Prot.Data$patient_id, Meta.Data$SubjectID), ]
+Meta.Data <- Meta.Data[
+  match(Prot.Data$patient_id, Meta.Data$SubjectID), ]
 
 # Produces data frame with patients, age_in_years, sex, and LRTI_Adjudication
 patient_info_ALL <- data.frame(
@@ -72,7 +80,7 @@ patient_info_ALL <- data.frame(
 # 1.4. Build protein matrix for all patients
 
 
-# Isolating Protein Matrix (Columns 211:7806 include the 7596 proteins)
+# Isolating Protein Matrix
 protein_mat_PROBEID <- as.matrix(Prot.Data[, prot_cols])
 
 # Remove "seq_"
@@ -83,20 +91,6 @@ colnames(protein_mat_PROBEID) <- gsub("_", "-", colnames(protein_mat_PROBEID))
 
 # Sets rownames to patient_id 
 rownames(protein_mat_PROBEID) <- Prot.Data$patient_id
-
-
-
-
-
-
-# 1.5. Safety check
-
-
-sum(duplicated(Meta.Data$SubjectID)) # Should be 0
-
-length(patients_vector) # Should be 151
-
-all(rownames(protein_mat_PROBEID) == patient_info_ALL$patient_id) # Should be TRUE
 
 
 

@@ -9,8 +9,10 @@ output:
 
 
 library(dplyr)
-library(rsample)
 library(magrittr)
+library(rsample)
+
+source("../../00-constants.R")
 
 
 
@@ -19,11 +21,6 @@ library(magrittr)
 
 # 2.1. Import metadata
 
-
-data_dir <- "C:/Users/peter/OneDrive/Documents/UCSF/BREATH2.Gene/data"
-
-# Number of folds
-nfolds <- as.numeric(Parameters["Folds", "Count"])
 
 # Number of No Evidence patients
 No_Evidence <- as.numeric(Parameters["No Evidence", "Count"])
@@ -42,7 +39,7 @@ min_NE_per_fold <- floor(No_Evidence / nfolds)
 folds_ok <- FALSE
 
 # Set seed
-set.seed(8634782)
+set.seed(project_seed)
 
 # While loop enforcing constraints
 while (!folds_ok) {
@@ -78,21 +75,11 @@ while (!folds_ok) {
 }
 
 # Save output
-write.csv(metadata_df_with_folds,
-  file.path(data_dir, "metadata_df_with_folds.csv"),
-  row.names=F)
-
-
-
-
-
-
-# 2.3. Safety Check
-
-
-print(counts)
-
-print(min_NE_per_fold)
+write.csv(
+  metadata_df_with_folds,
+  file.path(gene_data_dir, "metadata_df_with_folds.csv"),
+  row.names=F
+)
 
 
 

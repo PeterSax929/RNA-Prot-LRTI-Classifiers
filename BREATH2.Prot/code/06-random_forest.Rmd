@@ -13,6 +13,8 @@ library(magrittr)
 library(randomForest)
 library(tibble)
 
+source("../../00-constants.R")
+
 
 
 
@@ -21,24 +23,32 @@ library(tibble)
 # 6.1. Import Data for RF
 
 
-data_dir <- "C:/Users/peter/OneDrive/Documents/UCSF/BREATH2.Prot/data"
-results_dir <- "C:/Users/peter/OneDrive/Documents/UCSF/BREATH2.Prot/results"
-
 patient_info_with_folds <- read.csv(
-  file.path(data_dir, "patient_info_with_folds.csv"),
-  stringsAsFactors=F)
+  file.path(prot_data_dir, "patient_info_with_folds.csv"),
+  stringsAsFactors=F
+)
 
 protein_mat <- read.csv(
-  file.path(data_dir, "protein_mat.csv"), 
-  stringsAsFactors=F, row.names=1, check.names=F)
-
-ntrees <- as.numeric(Parameters["RF Trees", "Count"])
+  file.path(prot_data_dir, "protein_mat.csv"), 
+  stringsAsFactors=F, row.names=1, check.names=F
+)
 
 patient_info_with_folds$patient_id <- as.character(patient_info_with_folds$patient_id)
 
-lasso_fold_coefs    <- read.csv(file.path(results_dir, "lasso_fold_coefs.csv"),    stringsAsFactors=F)
-lasso_fold_coefs_n3 <- read.csv(file.path(results_dir, "lasso_fold_coefs_n3.csv"), stringsAsFactors=F)
-lasso_fold_coefs_n1 <- read.csv(file.path(results_dir, "lasso_fold_coefs_n1.csv"), stringsAsFactors=F)
+lasso_fold_coefs <- read.csv(
+  file.path(prot_results_dir, "lasso_fold_coefs.csv"),
+  stringsAsFactors=F
+)
+
+lasso_fold_coefs_n3 <- read.csv(
+  file.path(prot_results_dir, "lasso_fold_coefs_n3.csv"),
+  stringsAsFactors=F
+)
+
+lasso_fold_coefs_n1 <- read.csv(
+  file.path(prot_results_dir, "lasso_fold_coefs_n1.csv"),
+  stringsAsFactors=F
+)
 
 y <- as.factor(patient_info_with_folds$LRTI_adjudication)
 patient_info_with_folds <- as.data.frame(patient_info_with_folds)
@@ -52,7 +62,7 @@ patient_info_with_folds <- as.data.frame(patient_info_with_folds)
 
 
 lassoRF_cv_outer_fold <- function(test_fold, selected_lasso_coefs) {
-  set.seed(8634782 + test_fold)
+  set.seed(project_seed + test_fold)
 
   keep <- selected_lasso_coefs %>%
     filter(fold == test_fold) %>%
@@ -64,7 +74,8 @@ lassoRF_cv_outer_fold <- function(test_fold, selected_lasso_coefs) {
 
   rf <- randomForest(X[train, , drop = FALSE], y[train], ntree = ntrees)
 
-  preds <- predict(rf, newdata = X[!train, , drop = FALSE], type = "prob")[, "Definite"]
+  preds <- predict(rf, newdata = X[!train, , drop = FALSE],
+             type = "prob")[, "Definite"]
 
   list(test_fold = test_fold, mod = rf, pred = preds)
 }
@@ -81,9 +92,9 @@ collect_preds <- function(cv_list) {
   cv_list %>%
     lapply(function(x) {
       data.frame(
-        patient_id = rownames(protein_mat)[patient_info_with_folds$fold == x$test_fold],
-        pred       = x$pred
-      )
+        patient_id = rownames(protein_mat)[
+        patient_info_with_folds$fold == x$test_fold],
+        pred = x$pred)
     }) %>%
     bind_rows() %>%
     dplyr::left_join(
@@ -104,63 +115,76 @@ collect_preds <- function(cv_list) {
 max_fold <- max(patient_info_with_folds$fold)
 
 
-# lambda.1se (full LASSO)
+# Full LASSO (lanbda.1se)
 cv_lambda <- lapply(1:max_fold, function(f) lassoRF_cv_outer_fold(f, lasso_fold_coefs))
+
 rf_preds_lambda <- collect_preds(cv_lambda)
-write.csv(rf_preds_lambda, file.path(results_dir, "lassoRF_preds.csv"), row.names=F)
-message("lambda.1se done — n = ", nrow(rf_preds_lambda))
+
+write.csv(
+  rf_preds_lambda,
+  file.path(prot_results_dir, "lassoRF_preds.csv"),
+  row.names=F
+)
 
 
-# n3
-cv_n3 <- lapply(1:max_fold, function(f) lassoRF_cv_outer_fold(f, lasso_fold_coefs_n3))
-rf_preds_n3 <- collect_preds(cv_n3)
-write.csv(rf_preds_n3, file.path(results_dir, "lassoRF_preds_n3.csv"), row.names=F)
-message("n3 done — n = ", nrow(rf_preds_n3))
-
-
-# n1
+# 1 target LASSO
 cv_n1 <- lapply(1:max_fold, function(f) lassoRF_cv_outer_fold(f, lasso_fold_coefs_n1))
+
 rf_preds_n1 <- collect_preds(cv_n1)
-write.csv(rf_preds_n1, file.path(results_dir, "lassoRF_preds_n1.csv"), row.names=F)
-message("n1 done — n = ", nrow(rf_preds_n1))
+
+write.csv(
+  rf_preds_n1,
+  file.path(prot_results_dir, "lassoRF_preds_n1.csv"),
+  row.names=F
+)
 
 
-# FABP4 single biomarker
+# 3 target LASSO
+cv_n3 <- lapply(1:max_fold, function(f) lassoRF_cv_outer_fold(f, lasso_fold_coefs_n3))
+
+rf_preds_n3 <- collect_preds(cv_n3)
+
+write.csv(
+  rf_preds_n3,
+  file.path(prot_results_dir, "lassoRF_preds_n3.csv"),
+  row.names=F
+)
+
+
+# FABP4 classifier
 lasso_coefs_FABP4 <- data.frame(
   protein = rep("FABP4", max_fold),
   coef    = NA,
   fold    = 1:max_fold
 )
+
 cv_FABP4 <- lapply(1:max_fold, function(f) lassoRF_cv_outer_fold(f, lasso_coefs_FABP4))
+
 rf_preds_FABP4 <- collect_preds(cv_FABP4)
-write.csv(rf_preds_FABP4, file.path(results_dir, "lassoRF_preds_FABP4.csv"), row.names=F)
-message("FABP4 done — n = ", nrow(rf_preds_FABP4))
+
+write.csv(
+  rf_preds_FABP4, 
+  file.path(prot_results_dir, "lassoRF_preds_FABP4.csv"),
+  row.names=F
+)
 
 
-# ISG15 single biomarker
+# ISG15 classifier
 lasso_coefs_ISG15 <- data.frame(
   protein = rep("ISG15", max_fold),
   coef    = NA,
   fold    = 1:max_fold
 )
+
 cv_ISG15 <- lapply(1:max_fold, function(f) lassoRF_cv_outer_fold(f, lasso_coefs_ISG15))
+
 rf_preds_ISG15 <- collect_preds(cv_ISG15)
-write.csv(rf_preds_ISG15, file.path(results_dir, "lassoRF_preds_ISG15.csv"), row.names=F)
-message("ISG15 done — n = ", nrow(rf_preds_ISG15))
 
-
-
-
-
-
-# 6.5. Safety Checks
-
-
-all(lasso_fold_coefs$protein    %in% colnames(protein_mat))
-all(lasso_fold_coefs_n3$protein %in% colnames(protein_mat))
-all(lasso_fold_coefs_n1$protein %in% colnames(protein_mat))
-nrow(rf_preds_lambda) == nrow(patient_info_with_folds)
-all(rownames(protein_mat) == patient_info_with_folds$patient_id)
+write.csv(
+  rf_preds_ISG15, 
+  file.path(prot_results_dir, "lassoRF_preds_ISG15.csv"),
+  row.names=F
+)
 
 
 

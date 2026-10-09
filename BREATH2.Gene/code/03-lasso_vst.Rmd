@@ -8,12 +8,14 @@ output:
 ```{r, warning=F, message=F}
 
 
-library(dplyr)
-library(magrittr)
 library(DESeq2)
-library(glmnet)
-library(tibble)
+library(dplyr)
 library(ggplot2)
+library(glmnet)
+library(magrittr)
+library(tibble)
+
+source("../../00-constants.R")
 
 
 
@@ -23,26 +25,21 @@ library(ggplot2)
 # 3.1. Import host counts & metadata
 
 
-data_dir <- "C:/Users/peter/OneDrive/Documents/UCSF/BREATH2.Gene/data"
-raw_data_dir <- "C:/Users/peter/OneDrive/Documents/UCSF/raw_data"
-results_dir <- "C:/Users/peter/OneDrive/Documents/UCSF/BREATH2.Gene/results"
-
 # Metadata with folds
 metadata_df_with_folds <- read.csv(
-  file.path(data_dir, "metadata_df_with_folds.csv"),
+  file.path(gene_data_dir, "metadata_df_with_folds.csv"),
   stringsAsFactors=F)
 
-# Host counts (remove gene_symbol column, rownames = ENSG)
+# Host counts 
 host_counts <- read.csv(
   file.path(raw_data_dir, "host_gene_counts.csv"),
   stringsAsFactors=F,
   row.names=1)[, -1]
 
 # Filter to samples used for CV
-cv_host_counts <- host_counts[, metadata_df_with_folds$sample_name, drop=F]
-
-# Number of folds
-nfolds <- as.numeric(Parameters["Folds", "Count"])
+cv_host_counts <- host_counts[,
+  metadata_df_with_folds$sample_name,
+  drop=F]
 
 # Map ENSG to SYMBOL
 ensg2gene <- read.csv(
@@ -60,7 +57,7 @@ ensg2gene <- read.csv(
 
 lasso_cv_outer_fold <- function(test_fold) {
 
-  set.seed(8634782 + test_fold)
+  set.seed(project_seed + test_fold)
 
   # Identify train/test samples
   train_idx <- metadata_df_with_folds$fold != test_fold
@@ -71,9 +68,9 @@ lasso_cv_outer_fold <- function(test_fold) {
   
   
   
-  # 3.2a. VST using training samples only
+# 3.2a. VST using training samples only
 
-  
+
   # Extract training counts
   train_counts <- cv_host_counts[, train_idx, drop=F]
 
@@ -103,14 +100,14 @@ lasso_cv_outer_fold <- function(test_fold) {
     metadata_df_with_folds$LRTI_adjudication[train_idx] == "Definite"
   )
 
-  
-  
-  
-  
-
-  # 3.2b. Fit LASSO lambda path on training data
 
   
+  
+  
+  
+# 3.2b. Fit LASSO lambda path on training data
+
+
   fit <- glmnet::glmnet(
     X_train,
     y_train,
@@ -122,9 +119,9 @@ lasso_cv_outer_fold <- function(test_fold) {
   
   
   
-  # 3.2c. VST using test samples only
+# 3.2c. VST using test samples only
 
-  
+
   # Extract test counts
   test_counts <- cv_host_counts[, test_idx, drop=F]
 
@@ -148,14 +145,14 @@ lasso_cv_outer_fold <- function(test_fold) {
   vsd_test_mat <- SummarizedExperiment::assay(vsd_test) %>%
     round(2)
 
-  
-  
-  
-  
-
-  # 3.2d. Cross-validated LASSO on training data
 
   
+  
+  
+  
+# 3.2d. Cross-validated LASSO on training data
+
+
   cv_fit <- cv.glmnet(
     X_train,
     y_train,
@@ -168,9 +165,9 @@ lasso_cv_outer_fold <- function(test_fold) {
   
   
   
-  # 3.2e. Extract lambda.1se coefficients
+# 3.2e. Extract lambda.1se coefficients
 
-  
+
   coefs_lambda <- coef(
     fit,
     s=cv_fit$lambda.1se
@@ -190,9 +187,9 @@ lasso_cv_outer_fold <- function(test_fold) {
   
   
 
-  # 3.2f. Extract fixed-n coefficients
+# 3.2f. Extract fixed-n coefficients
 
-  
+
   extract_fixed_n <- function(target_n) {
 
     # Number of nonzero coefficients at each lambda
@@ -288,12 +285,8 @@ lasso_cv_outer_fold <- function(test_fold) {
     n1=n1_df,
     vsd_train=vsd_train_mat,
     vsd_test=vsd_test_mat
-    ))
+  ))
 }
-
-
-
-
 
 
 # 3.3. Run LASSO across folds
@@ -309,7 +302,7 @@ for (i in seq_along(lasso_results)) {
   saveRDS(
     lasso_results[[i]]$vsd_train,
     file.path(
-      data_dir,
+      gene_data_dir,
       paste0("vsd_train_fold", i, ".rds")
     )
   )
@@ -317,12 +310,11 @@ for (i in seq_along(lasso_results)) {
   saveRDS(
     lasso_results[[i]]$vsd_test,
     file.path(
-      data_dir,
+      gene_data_dir,
       paste0("vsd_test_fold", i, ".rds")
     )
   )
 }
-
 
 
 # Collect fold-specific LASSO coefficients
@@ -353,8 +345,7 @@ full_vsd <- do.call(
 
 
 # Ensure columns are in the same order as metadata
-full_vsd <- full_vsd[
-  ,
+full_vsd <- full_vsd[,
   metadata_df_with_folds$sample_name,
   drop=F]
 
@@ -369,23 +360,23 @@ stopifnot(
 # Save VST matrix for downstream analyses
 write.csv(
   full_vsd,
-  file.path(data_dir, "vst_oof.csv"),
+  file.path(gene_data_dir, "vst_oof.csv"),
   row.names=T)
 
 # Save LASSO coefficients
 write.csv(
   lasso_fold_coefs,
-  file.path(results_dir, "lasso_fold_coefs.csv"),
+  file.path(gene_results_dir, "lasso_fold_coefs.csv"),
   row.names=F)
 
 write.csv(
   lasso_fold_coefs_n3,
-  file.path(results_dir, "lasso_fold_coefs_n3.csv"),
+  file.path(gene_results_dir, "lasso_fold_coefs_n3.csv"),
   row.names=F)
 
 write.csv(
   lasso_fold_coefs_n1,
-  file.path(results_dir, "lasso_fold_coefs_n1.csv"),
+  file.path(gene_results_dir, "lasso_fold_coefs_n1.csv"),
   row.names=F)
 
 
@@ -394,14 +385,6 @@ write.csv(
 
 
 # 3.4. Safety Checks
-
-
-# Number of selected genes per fold
-print(table(lasso_fold_coefs$fold))
-
-print(table(lasso_fold_coefs_n3$fold))
-
-print(table(lasso_fold_coefs_n1$fold))
 
 
 # Confirm exactly 3 genes per fold
@@ -435,3 +418,4 @@ stopifnot(
 
 
 ```
+

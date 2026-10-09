@@ -9,8 +9,10 @@ output:
 
 
 library(dplyr)
-library(rsample)
 library(magrittr)
+library(rsample)
+
+source("../../00-constants.R")
 
 
 
@@ -20,18 +22,11 @@ library(magrittr)
 # 4.1. Import patient info
 
 
-# Set file paths
-data_dir <- "C:/Users/peter/OneDrive/Documents/UCSF/BREATH2.Prot/data"
-
-# Define number of folds
-nfolds <- as.numeric(Parameters["Folds", "Count"])
-
 # Define number of No Evidence patients
 No_Evidence <- as.numeric(Parameters["No Evidence", "Count"])
 
 # Minimum required per fold
 min_NE_per_fold <- floor(No_Evidence / nfolds)
-
 
 
 
@@ -45,7 +40,7 @@ min_NE_per_fold <- floor(No_Evidence / nfolds)
 folds_ok <- FALSE
 
 # Set seed
-set.seed(8634782)
+set.seed(project_seed)
 
 # While loop
 while (!folds_ok) {
@@ -82,24 +77,22 @@ while (!folds_ok) {
 # Save output
 write.csv(
   patient_info_with_folds,
-  file.path(data_dir, "patient_info_with_folds.csv"),
-  row.names=F)
+  file.path(prot_data_dir, "patient_info_with_folds.csv"),
+  row.names=F
+)
 
 
 
 
 
 
-# 4.3. Safety Check
+# 4.3. Validation
 
 
-print(counts)
-
-print(min_NE_per_fold)
-
-stopifnot(!any(is.na(patient_info_with_folds$fold)),  # every patient assigned
-  all(counts[, "No Evidence"] >= min_NE_per_fold),  # constraint met
-  nrow(patient_info_with_folds) == nrow(patient_info)  # no rows dropped
+stopifnot(
+  !any(is.na(patient_info_with_folds$fold)),
+  all(counts[, "No Evidence"] >= min_NE_per_fold),
+  nrow(patient_info_with_folds) == nrow(patient_info)
 )
 
 
@@ -108,3 +101,5 @@ stopifnot(!any(is.na(patient_info_with_folds$fold)),  # every patient assigned
 
 
 ```
+
+

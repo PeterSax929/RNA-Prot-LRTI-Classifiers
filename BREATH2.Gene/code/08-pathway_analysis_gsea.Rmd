@@ -1,0 +1,409 @@
+---
+title: "08-pathway_analysis_gsea"
+output: 
+  html_notebook:
+    toc: true
+---
+
+```{r, warning=F, message=F}
+
+
+library(clusterProfiler)
+library(dplyr)
+library(ggplot2)
+library(msigdbr)
+library(stringr)
+
+source("../../00-constants.R")
+
+
+
+
+
+
+# 8.1. Import data
+
+
+rna_res <- read.csv(
+  file.path(gene_results_dir, "DE_limma_results_transcriptome.csv"),
+  stringsAsFactors=F
+)
+
+prot_res <- read.csv(
+  file.path(prot_results_dir, "DA_results_proteomics.csv"),
+  stringsAsFactors=F
+)
+
+
+
+
+
+
+# 8.2. Ranked genes list
+
+
+# Use gene symbols and log2 fold changes
+gsea_df <- rna_res %>%
+  filter(
+    !is.na(gene_symbol),
+    gene_symbol != "",
+    !is.na(log2FoldChange)
+  ) %>%
+  distinct(
+    gene_symbol,
+    .keep_all=T
+  )
+
+# Named numeric vector: log2FC, names = gene symbols
+gene_ranks <- gsea_df$log2FoldChange
+names(gene_ranks) <- gsea_df$gene_symbol
+
+# Sort decreasing
+gene_ranks <- sort(gene_ranks, decreasing=T)
+
+
+
+
+
+
+# 8.3. Ranked proteins list
+
+
+# Use protein gene symbols and log2 fold changes
+protein_df <- prot_res %>%
+  filter(
+    !is.na(gene),
+    gene != "",
+    !is.na(log2FoldChange)
+  ) %>%
+  distinct(
+    gene,
+    .keep_all=T
+  )
+
+protein_ranks <- protein_df$log2FoldChange
+names(protein_ranks) <- protein_df$gene
+
+# Sort decreasing
+protein_ranks <- sort(protein_ranks, decreasing=T)
+
+
+
+
+
+
+# 8.3. RNA vs Protein dot plot
+
+
+# Import Hallmark gene sets
+hallmark_sets <- msigdbr::msigdbr(
+  species="Homo sapiens",
+  category="H"
+) %>%
+  dplyr::select(
+    gs_name,
+    gene_symbol
+  )
+
+# Run GSEA for RNA
+set.seed(project_seed)
+
+gsea_hallmark_rna_all <- GSEA(
+  geneList=gene_ranks,
+  TERM2GENE=hallmark_sets,
+  pvalueCutoff=1,
+  eps=0,
+  verbose=FALSE
+)
+
+
+# Run GSEA for protein
+set.seed(project_seed)
+
+gsea_hallmark_prot_all <- GSEA(
+  geneList=protein_ranks,
+  TERM2GENE=hallmark_sets,
+  pvalueCutoff=1,
+  eps=0,
+  verbose=FALSE
+)
+
+
+
+
+
+
+# 8.3a. Compare RNA and protein Hallmark pathways
+
+
+rna_df <- gsea_hallmark_rna_all@result %>%
+  dplyr::select(
+    ID,
+    Description,
+    NES_rna=NES,
+    padj_rna=p.adjust
+  )
+
+prot_df <- gsea_hallmark_prot_all@result %>%
+  dplyr::select(
+    ID,
+    NES_prot=NES,
+    padj_prot=p.adjust
+  )
+
+hallmark_compare_df <- full_join(
+  rna_df,
+  prot_df,
+  by="ID"
+) %>%
+  mutate(
+    combined_abs_NES=abs(NES_rna) + abs(NES_prot)
+  )
+
+
+# Select top 20 pathways by combined absolute NES
+hallmark_to_plot <- hallmark_compare_df %>%
+  arrange(desc(combined_abs_NES)) %>%
+  slice_head(n=20)
+
+
+
+
+
+
+# 8.3b. Prepare plot content
+
+
+plot_df <- hallmark_to_plot %>%
+  dplyr::select(
+    ID,
+    Description,
+    NES_rna,
+    padj_rna,
+    NES_prot,
+    padj_prot,
+    combined_abs_NES
+  ) %>%
+  tidyr::pivot_longer(
+    cols=c(NES_rna, NES_prot),
+    names_to="Omics",
+    values_to="NES"
+  ) %>%
+  mutate(
+    padj=ifelse(Omics == "NES_rna", padj_rna, padj_prot),
+    Omics=ifelse(Omics == "NES_rna", "RNA", "Protein"),
+    Significant=padj < 0.05,
+    Description=stringr::str_wrap(
+      tools::toTitleCase(
+        tolower(
+          gsub(
+            "_",
+            " ",
+            gsub("^HALLMARK_", "", Description)
+          )
+        )
+      ),
+      width=40
+    ),
+    Description=reorder(
+      Description,
+      combined_abs_NES
+    )
+  )
+
+
+# Colors are defined in 00-constants.R
+omics_colors <- c(
+  "RNA"= gene_color,
+  "Protein"= protein_color
+)
+
+
+
+
+
+
+# 8.3c. RNA vs. protein pathway dot plot
+
+
+lolliplot <- ggplot(
+  plot_df,
+  aes(
+    y=Description,
+    x=NES
+    )
+  ) +
+
+  # Center line
+  geom_vline(
+    xintercept=0,
+    linewidth=0.5,
+    color="grey60"
+  ) +
+
+  # Stems
+  geom_segment(
+    aes(
+      x=0,
+      xend=NES,
+      yend=Description
+    ),
+    linewidth=0.55,
+    color="grey75"
+  ) +
+
+  # Points: filled if significant, hollow if not significant
+  geom_point(
+    aes(
+      fill=ifelse(Significant, Omics, "NotSig"),
+      color=Omics
+    ),
+    shape=21,
+    size=5.0,
+    stroke=1.4
+  ) +
+
+  # Fill indicates pathway significance
+  scale_fill_manual(
+    values=c(
+      "RNA"=gene_color,
+      "Protein"=protein_color,
+      "NotSig"="white"
+    ),
+    breaks=c(
+      "RNA",
+      "Protein",
+      "NotSig"
+    ),
+    labels=c(
+      "RNA",
+      "Protein",
+      "Not significant"
+    ),
+    name="",
+    guide=guide_legend(
+      override.aes=list(
+        color=c(
+          gene_color,
+          protein_color,
+          "grey60"
+        ),
+        stroke=1.4,
+        shape=21
+      )
+    )
+  ) +
+
+  # Color identifies omics modality
+  scale_color_manual(
+    values=omics_colors,
+    guide="none"
+  ) +
+
+  # Axes
+  scale_x_continuous(
+    limits=c(-2.5, 4.5)
+  ) +
+
+  # Labels and title
+  labs(
+    title="RNA vs protein pathway enrichment",
+    x="Normalized Enrichment Score (NES)",
+    y=NULL
+  ) +
+
+  # Theme
+  theme_classic(
+    base_family="Arial"
+  ) +
+
+  theme(
+    text=element_text(
+      family="Arial",
+      size=16,
+      face="plain"
+    ),
+    axis.text.y=element_text(
+      family="Arial",
+      size=14,
+      face="plain",
+      colour="black"
+    ),
+    axis.text.x=element_text(
+      family="Arial",
+      size=16,
+      face="plain",
+      colour="black"
+    ),
+    axis.title.x=element_text(
+      family="Arial",
+      size=16,
+      face="plain",
+      colour="black"
+    ),
+    axis.title.y=element_blank(),
+    axis.line=element_line(
+      colour="black",
+      linewidth=0.5
+    ),
+    plot.title=element_text(
+      family="Arial",
+      size=16,
+      face="plain",
+      colour="black",
+      hjust=0.5
+    ),
+    legend.position="bottom",
+    legend.direction="horizontal",
+    legend.justification="left",
+    legend.box="vertical",
+    legend.title=element_text(
+      family="Arial",
+      size=16,
+      face="plain",
+      colour="black"
+    ),
+    legend.text=element_text(
+      family="Arial",
+      size=16,
+      face="plain",
+      colour="black"
+    ),
+    legend.key.size=grid::unit(
+      1.2,
+      "lines"
+    ),
+    plot.margin=ggplot2::margin(
+      10, 20, 10, 10
+    ),
+    panel.grid.major.x=element_line(
+      color="grey92",
+      linewidth=0.4
+    )
+  )
+
+
+# Export as PDF
+ggsave(
+  filename=file.path(
+  plots_dir, "(2C)_GSEA_Hallmark_RNA_vs_Protein.pdf"),
+  plot=lolliplot,
+  width=8,
+  height=8,
+  device=cairo_pdf,
+  bg="white"
+)
+
+
+# Save plot object for patchwork
+saveRDS(
+  lolliplot,
+  file.path(gene_results_dir, "figure2C.rds")
+)
+
+
+
+
+
+
+```

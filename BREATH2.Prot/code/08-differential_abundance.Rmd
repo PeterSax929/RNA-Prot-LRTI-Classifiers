@@ -8,11 +8,13 @@ output:
 ```{r, warning=F, message=F}
 
 
-library(limma)
+library(dplyr)
 library(ggplot2)
 library(ggrepel)
-library(dplyr)
+library(limma)
 library(tibble)
+
+source("../../00-constants.R")
 
 
 
@@ -22,21 +24,15 @@ library(tibble)
 # 8.1. Import data
 
 
-# Set file paths
-data_dir <- "C:/Users/peter/OneDrive/Documents/UCSF/BREATH2.Prot/data"
-results_dir <- "C:/Users/peter/OneDrive/Documents/UCSF/BREATH2.Prot/results"
-
 # Import data
 metadata_df_with_folds <- read.csv(
-  file.path(data_dir, "patient_info_with_folds.csv"),
+  file.path(prot_data_dir,"patient_info_with_folds.csv"),
   stringsAsFactors=F
 )
 
 protein_mat <- read.csv(
-  file.path(data_dir, "protein_mat.csv"),
-  stringsAsFactors=F,
-  check.names=F,
-  row.names=1
+  file.path(prot_data_dir, "protein_mat.csv"),
+  stringsAsFactors=F, check.names=F, row.names=1
 )
 
 # Align metadata and protein matrix
@@ -44,7 +40,9 @@ metadata_df_with_folds <- metadata_df_with_folds %>%
   filter(patient_id %in% rownames(protein_mat)) %>%
   column_to_rownames("patient_id")
 
-protein_mat <- protein_mat[rownames(metadata_df_with_folds), ]
+protein_mat <- protein_mat[
+  rownames(metadata_df_with_folds),
+]
 
 
 
@@ -128,8 +126,8 @@ volcano_plot_prot <- ggplot(
   aes(
     x = log2FoldChange,
     y = negLog10P
-  )
-) +
+    )
+  ) +
 
   # Points
   geom_point(
@@ -140,8 +138,8 @@ volcano_plot_prot <- ggplot(
 
   scale_color_manual(
     values = c(
-      "LRTI" = "#D55E00",
-      "Control" = "#8B4789",
+      "LRTI" = LRTI_color,
+      "Control" = control_color,
       "NotSignificant" = "grey85"
     ),
     guide = "none"
@@ -196,18 +194,18 @@ volcano_plot_prot <- ggplot(
     y = expression(-log[10](P[adj])),
     title = "Proteomic differential abundance",
     caption = paste0(
-    "\u2190 Downregulated in LRTI",
-    "        ",
-    "Upregulated in LRTI \u2192"
-  )
-    ) +
+      "\u2190 Downregulated in LRTI",
+      "        ",
+      "Upregulated in LRTI \u2192"
+    )
+  ) +
 
-  # x-axis: 1 decimal place
+  # x-axis
   scale_x_continuous(
     labels = scales::number_format(accuracy = 0.1)
   ) +
 
-  # y-axis: 1.0 to 5.0 with 1 decimal place
+  # y-axis
   scale_y_continuous(
     breaks = seq(0, 5, by = 1),
     labels = scales::number_format(accuracy = 0.1),
@@ -217,7 +215,6 @@ volcano_plot_prot <- ggplot(
 
   # Theme
   theme_classic(
-    base_size = 16,
     base_family = "Arial"
   ) +
 
@@ -259,18 +256,17 @@ volcano_plot_prot <- ggplot(
     plot.margin = ggplot2::margin(10, 15, 10, 10)
   )
 
-print(volcano_plot_prot)
 
 # Save results
 write.csv(
   res_df,
-  file.path(results_dir, "DA_results_proteomics.csv"),
-  row.names = F
+  file.path(prot_results_dir, "DA_results_proteomics.csv"),
+  row.names=F
 )
 
 # Save editable vector PDF
 ggsave(
-  file.path(results_dir, "volcano_proteome.pdf"),
+  file.path(plots_dir,"(2B)_volcano_proteome.pdf"),
   volcano_plot_prot,
   width = 6.5,
   height = 6.5,
@@ -281,7 +277,7 @@ ggsave(
 # Save plot object for patchwork
 saveRDS(
   volcano_plot_prot,
-  file.path(results_dir, "volcano_proteome.rds")
+  file.path(prot_results_dir, "figure2B.rds")
 )
 
 
@@ -291,14 +287,7 @@ saveRDS(
 
 ```
 
-Key changes:
-1. Font sizes raised to 16 throughout
-2. Arrows removed from inside the plot, replaced with caption `\u2190`/`\u2192`
-3. `plot.caption` styling added
-4. `scale_x_continuous` with `accuracy=0.1` for 1 decimal place on x
-5. `scale_y_continuous` fixed from 1.0 to 5.0 with 1 decimal place labels and `limits=c(0, 5.2)`
-6. DA protein count label moved to `y=4.8` to stay within bounds
-7. Kept your original spacing/formatting style
+
 
 
 

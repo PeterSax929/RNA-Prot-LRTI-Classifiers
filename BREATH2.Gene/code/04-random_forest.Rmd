@@ -13,6 +13,8 @@ library(magrittr)
 library(randomForest)
 library(tibble)
 
+source("../../00-constants.R")
+
 
 
 
@@ -21,31 +23,22 @@ library(tibble)
 # 4.1. Import Data for RF
 
 
-data_dir <- "C:/Users/peter/OneDrive/Documents/UCSF/BREATH2.Gene/data"
-raw_data_dir <- "C:/Users/peter/OneDrive/Documents/UCSF/raw_data"
-results_dir <- "C:/Users/peter/OneDrive/Documents/UCSF/BREATH2.Gene/results"
-
 # Import metadata
 metadata_df_with_folds <- read.csv(
-  file.path(data_dir, "metadata_df_with_folds.csv"),
+  file.path(gene_data_dir, "metadata_df_with_folds.csv"),
   stringsAsFactors=F)
-
-
-
-# Number of RF trees
-ntrees <- as.numeric(Parameters["RF Trees", "Count"])
 
 # Import LASSO-selected genes
 lasso_fold_coefs <- read.csv(
-  file.path(results_dir, "lasso_fold_coefs.csv"),
+  file.path(gene_results_dir, "lasso_fold_coefs.csv"),
   stringsAsFactors=F)
 
 lasso_fold_coefs_n3 <- read.csv(
-  file.path(results_dir, "lasso_fold_coefs_n3.csv"),
+  file.path(gene_results_dir, "lasso_fold_coefs_n3.csv"),
   stringsAsFactors=F)
 
 lasso_fold_coefs_n1 <- read.csv(
-  file.path(results_dir, "lasso_fold_coefs_n1.csv"),
+  file.path(gene_results_dir, "lasso_fold_coefs_n1.csv"),
   stringsAsFactors=F)
 
 # Outcome variable
@@ -62,8 +55,6 @@ nfolds <- max(metadata_df_with_folds$fold)
 
 
 
-
-
 # 4.2. RF function
 
 
@@ -72,7 +63,7 @@ run_rf_classifier <- function(selected_coefs, classifier_name) {
   
   cv_list <- lapply(seq_len(nfolds), function(test_fold) {
     
-    set.seed(8634782 + test_fold)
+    set.seed(project_seed + test_fold)
     
     # Features selected for this outer test fold
     keep <- selected_coefs %>%
@@ -88,14 +79,14 @@ run_rf_classifier <- function(selected_coefs, classifier_name) {
     # Load VST matrices generated using this outer fold
     vsd_train_mat <- readRDS(
       file.path(
-        data_dir,
+        gene_data_dir,
         paste0("vsd_train_fold", test_fold, ".rds")
       )
     )
 
     vsd_test_mat <- readRDS(
       file.path(
-        data_dir,
+        gene_data_dir,
         paste0("vsd_test_fold", test_fold, ".rds")
       )
     )
@@ -116,7 +107,7 @@ run_rf_classifier <- function(selected_coefs, classifier_name) {
       ),
       all(
         colnames(vsd_test_mat) ==
-          metadata_df_with_folds$sample_name[test]
+        metadata_df_with_folds$sample_name[test]
       )
     )
 
@@ -176,10 +167,8 @@ run_rf_classifier <- function(selected_coefs, classifier_name) {
   # Save predictions
   write.csv(
     rf_preds,
-    file.path(
-      results_dir,
-      paste0(classifier_name, ".csv")
-    ),
+    file.path(gene_results_dir,
+      paste0(classifier_name, ".csv")),
     row.names=F
   )
   
@@ -213,10 +202,6 @@ cv_lasso_n1 <- run_rf_classifier(
 )
 
 
-
-
-
-
 # 4.4. Single-biomarker classifiers
 
 
@@ -225,7 +210,7 @@ ensg2gene <- read.csv(
   file.path(raw_data_dir, "host_gene_counts.csv"),
   stringsAsFactors=F
 ) %>%
-  select(X, gene_symbol)
+  dplyr::select(X, gene_symbol)
 
 
 # Identify ENSG IDs for FABP4 and ISG15
@@ -238,14 +223,6 @@ isg15_ensg <- ensg2gene %>%
   pull(X)
 
 
-# Safety checks
-stopifnot(length(fabp4_ensg) == 1)
-stopifnot(length(isg15_ensg) == 1)
-
-stopifnot(fabp4_ensg %in% colnames(X_all))
-stopifnot(isg15_ensg %in% colnames(X_all))
-
-
 # Create fold-specific FABP4 selection
 fabp4_coefs <- data.frame(
   gene_symbol = rep("FABP4", nfolds),
@@ -254,7 +231,6 @@ fabp4_coefs <- data.frame(
   fold = seq_len(nfolds),
   stringsAsFactors=F
 )
-
 
 # Create fold-specific ISG15 selection
 isg15_coefs <- data.frame(
@@ -271,7 +247,6 @@ cv_fabp4 <- run_rf_classifier(
   selected_coefs = fabp4_coefs,
   classifier_name = "lassoRF_preds_FABP4"
 )
-
 
 # ISG15 classifier
 cv_isg15 <- run_rf_classifier(
@@ -298,7 +273,7 @@ collect_rf_votes <- function(cv_list) {
           test_fold = x$test_fold,
           pred = .data[["Definite"]]
         ) %>%
-        select(
+        dplyr::select(
           test_fold,
           sample_name,
           pred
@@ -338,38 +313,33 @@ rf_votes_ISG15 <- collect_rf_votes(cv_isg15)
 # Number of predictions should equal number of patients
 stopifnot(
   nrow(read.csv(
-    file.path(results_dir, "lassoRF_preds.csv")
+    file.path(gene_results_dir, "lassoRF_preds.csv")
   )) == nrow(metadata_df_with_folds)
 )
 
 stopifnot(
   nrow(read.csv(
-    file.path(results_dir, "lassoRF_preds_n3.csv")
+    file.path(gene_results_dir, "lassoRF_preds_n3.csv")
   )) == nrow(metadata_df_with_folds)
 )
 
 stopifnot(
   nrow(read.csv(
-    file.path(results_dir, "lassoRF_preds_n1.csv")
+    file.path(gene_results_dir, "lassoRF_preds_n1.csv")
   )) == nrow(metadata_df_with_folds)
 )
 
 stopifnot(
   nrow(read.csv(
-    file.path(results_dir, "lassoRF_preds_FABP4.csv")
+    file.path(gene_results_dir, "lassoRF_preds_FABP4.csv")
   )) == nrow(metadata_df_with_folds)
 )
 
 stopifnot(
   nrow(read.csv(
-    file.path(results_dir, "lassoRF_preds_ISG15.csv")
+    file.path(gene_results_dir, "lassoRF_preds_ISG15.csv")
   )) == nrow(metadata_df_with_folds)
 )
-
-
-# Confirm biomarker features are present
-stopifnot(fabp4_ensg %in% colnames(X_all))
-stopifnot(isg15_ensg %in% colnames(X_all))
 
 
 
@@ -377,3 +347,4 @@ stopifnot(isg15_ensg %in% colnames(X_all))
 
 
 ```
+

@@ -5,13 +5,15 @@ output:
     toc: true
 ---
 
-```{r, warning=F}
+```{r, warning=F, message=F}
 
 
 library(dplyr)
+library(ggplot2)
 library(magrittr)
 library(pROC)
-library(ggplot2)
+
+source("../../00-constants.R")
 
 
 
@@ -21,17 +23,20 @@ library(ggplot2)
 # 7.1. Import metadata & predictions
 
 
-data_dir <- "C:/Users/peter/OneDrive/Documents/UCSF/BREATH2.Prot/data"
-results_dir <- "C:/Users/peter/OneDrive/Documents/UCSF/BREATH2.Prot/results"
-
 patient_info_with_folds <- read.csv(
-  file.path(data_dir, "patient_info_with_folds.csv"),
-  stringsAsFactors = FALSE
+  file.path(prot_data_dir, "patient_info_with_folds.csv"),
+  stringsAsFactors=F
 )
 
 # All prediction files
 classifier_files <- tibble(
-  classifier = c("Full LASSO", "3-feature LASSO", "1-feature LASSO", "FABP4", "ISG15"),
+  classifier = c(
+    "Full LASSO",
+    "3-feature LASSO",
+    "1-feature LASSO",
+    "FABP4",
+    "ISG15"
+  ),
   csv = c(
     "lassoRF_preds.csv",
     "lassoRF_preds_n3.csv",
@@ -39,13 +44,22 @@ classifier_files <- tibble(
     "lassoRF_preds_FABP4.csv",
     "lassoRF_preds_ISG15.csv"
   ),
-  suffix = c("prot", "n3_prot", "n1_prot", "FABP4_prot", "ISG15_prot")
+  suffix = c(
+    "prot",
+    "n3_prot",
+    "n1_prot",
+    "FABP4_prot",
+    "ISG15_prot"
+  )
 )
 
 pred_list <- classifier_files %>%
   mutate(
     preds = lapply(csv, function(f) {
-      read.csv(file.path(results_dir, f), stringsAsFactors = FALSE) %>%
+      read.csv(
+        file.path(prot_results_dir, f),
+        stringsAsFactors=F
+      ) %>%
         mutate(
           LRTI_adjudication = factor(
             LRTI_adjudication,
@@ -53,7 +67,8 @@ pred_list <- classifier_files %>%
           )
         ) %>%
         inner_join(
-          patient_info_with_folds %>% dplyr::select(patient_id, fold),
+          patient_info_with_folds %>%
+            dplyr::select(patient_id, fold),
           by = "patient_id"
         )
     })
@@ -74,8 +89,10 @@ output_auc_roc <- function(preds_df, output_suffix) {
     group_by(fold) %>%
     summarize({
       roc_obj <- pROC::roc(
-        response = factor(LRTI_adjudication,
-                          levels = c("No Evidence", "Definite")),
+        response = factor(
+          LRTI_adjudication,
+          levels = c("No Evidence", "Definite")
+        ),
         predictor = pred,
         direction = "<"
       )
@@ -90,34 +107,48 @@ output_auc_roc <- function(preds_df, output_suffix) {
     }, .groups = "drop")
 
   # Fold ROC PDF
-  pdf(file.path(results_dir, paste0("ROC_", output_suffix, ".pdf")))
+  pdf(
+    file.path(
+      prot_results_dir,
+      paste0("ROC_", output_suffix, ".pdf")
+    )
+  )
 
   for (i in sort(unique(preds_df$fold))) {
 
-    fold_data <- preds_df %>% filter(fold == i)
+    fold_data <- preds_df %>%
+      filter(fold == i)
 
     roc_obj <- pROC::roc(
-      response = factor(fold_data$LRTI_adjudication,
-                        levels = c("No Evidence", "Definite")),
+      response = factor(
+        fold_data$LRTI_adjudication,
+        levels = c("No Evidence", "Definite")),
       predictor = fold_data$pred,
       direction = "<"
     )
 
-    plot(roc_obj, add = (i != 1), col = i)
+    plot(
+      roc_obj,
+      add = (i != 1),
+      col = i
+    )
   }
 
   dev.off()
 
   write.csv(
     auc_df,
-    file.path(results_dir, paste0("cv_auc_", output_suffix, ".csv")),
-    row.names = FALSE
+    file.path(prot_results_dir,
+      paste0("cv_auc_", output_suffix, ".csv")),
+    row.names=F
   )
 
   # Pooled ROC + DeLong CI
   pooled_roc <- pROC::roc(
-    response = factor(preds_df$LRTI_adjudication,
-                      levels = c("No Evidence", "Definite")),
+    response = factor(
+      preds_df$LRTI_adjudication,
+      levels = c("No Evidence", "Definite")
+    ),
     predictor = preds_df$pred,
     direction = "<"
   )
@@ -132,8 +163,9 @@ output_auc_roc <- function(preds_df, output_suffix) {
 
   write.csv(
     pooled_summary,
-    file.path(results_dir, paste0("pooled_auc_", output_suffix, ".csv")),
-    row.names = FALSE
+    file.path(prot_results_dir,
+      paste0("pooled_auc_", output_suffix, ".csv")),
+    row.names=F
   )
 
   list(
@@ -148,6 +180,7 @@ output_auc_roc <- function(preds_df, output_suffix) {
 
 
 # 7.3. Run all five classifiers
+
 
 auc_results <- pred_list %>%
   mutate(
@@ -165,7 +198,12 @@ auc_lassoRF  <- auc_results$results[[1]]$fold_auc
 
 # 7.4. Full LASSO summary
 
-ci_auc <- read.csv(file.path(results_dir, "pooled_auc_prot.csv"))
+
+ci_auc <- read.csv(
+  file.path(
+    prot_results_dir, "pooled_auc_prot.csv"
+  )
+)
 
 message(
   "Full LASSO AUC: ",
@@ -177,14 +215,12 @@ message(
   ")"
 )
 
-print(auc_lassoRF)
 
 
 
 
 
-
-# 7.5. Forest plot – all protein classifiers
+# 7.5. Forest plot data – all protein classifiers
 
 
 forest_data_prot <- auc_results %>%
@@ -207,53 +243,11 @@ forest_data_prot <- auc_results %>%
     )
   )
 
-forest_plot_prot <- ggplot(forest_data_prot, aes(y = classifier)) +
-  geom_point(aes(x = auc), size = 4, shape = 18) +
-  geom_errorbarh(
-    aes(xmin = lower, xmax = upper),
-    height = 0.2,
-    linewidth = 0.8
-  ) +
-  geom_text(
-    aes(
-      x = upper + 0.03,
-      label = sprintf("%.2f (%.2f–%.2f)", auc, lower, upper)
-    ),
-    hjust = 0,
-    size = 3.5,
-    fontface = "bold"
-  ) +
-  scale_x_continuous(
-    limits = c(0.5, 1.15),
-    breaks = seq(0.5, 1.0, 0.1)
-  ) +
-  labs(
-    title = "AUROC Comparison Across Protein Classifiers",
-    subtitle = "Point estimates with 95% DeLong confidence intervals",
-    x = "AUROC",
-    y = NULL
-  ) +
-  theme_classic(base_size = 13) +
-  theme(
-    text = element_text(family = "Helvetica", face = "bold"),
-    axis.text = element_text(face = "bold"),
-    plot.title = element_text(face = "bold", size = 14),
-    plot.subtitle = element_text(face = "plain", size = 11)
-  )
-
-print(forest_plot_prot)
-
-ggsave(
-  file.path(results_dir, "forest_plot_protein_classifiers.pdf"),
-  forest_plot_prot,
-  width = 10,
-  height = 5
-)
-
+# Save results for figure 4A
 write.csv(
   forest_data_prot,
-  file.path(results_dir, "forest_data_protein_classifiers.csv"),
-  row.names = FALSE
+  file.path(prot_results_dir, "forest_data_protein_classifiers.csv"),
+  row.names=F
 )
 
 
@@ -264,10 +258,14 @@ write.csv(
 # 7.6. Full LASSO vs 3-protein classifier ROC curves
 
 
-# Prepare predictions from objects already created in 7.1
-lassoRF_preds_lambda <- pred_list$preds[[which(classifier_files$classifier == "Full LASSO")]]
+# Prepare predictions
+lassoRF_preds_lambda <- pred_list$preds[[
+  which(classifier_files$classifier == "Full LASSO")
+]]
 
-lassoRF_preds_n3 <- pred_list$preds[[which(classifier_files$classifier == "3-feature LASSO")]]
+lassoRF_preds_n3 <- pred_list$preds[[
+  which(classifier_files$classifier == "3-feature LASSO")
+]]
 
 
 # Compute ROC objects
@@ -285,21 +283,26 @@ roc_n3 <- pROC::roc(
   ci = TRUE
 )
 
-
 # Prepare ROC data frames for ggplot
 roc_lambda_df_prot <- data.frame(
   specificity = roc_lambda$specificities,
   sensitivity = roc_lambda$sensitivities,
   classifier  = "Full LASSO"
 ) %>%
-  arrange(specificity, sensitivity)
+  arrange(
+    specificity,
+    sensitivity
+  )
 
 roc_n3_df_prot <- data.frame(
   specificity = roc_n3$specificities,
   sensitivity = roc_n3$sensitivities,
   classifier  = "3-protein classifier"
 ) %>%
-  arrange(specificity, sensitivity)
+  arrange(
+    specificity,
+    sensitivity
+)
 
 roc_combined_prot <- bind_rows(
   roc_lambda_df_prot,
@@ -308,7 +311,10 @@ roc_combined_prot <- bind_rows(
   mutate(
     classifier = factor(
       classifier,
-      levels = c("Full LASSO", "3-protein classifier")
+      levels = c(
+        "Full LASSO",
+        "3-protein classifier"
+      )
     )
   )
 
@@ -347,19 +353,26 @@ ci_combined_prot <- bind_rows(
   mutate(
     classifier = factor(
       classifier,
-      levels = c("Full LASSO", "3-protein classifier")
+      levels = c(
+        "Full LASSO",
+        "3-protein classifier"
+      )
     )
   )
 
 
-# Get pooled AUC values already calculated in 7.3
-auc_lambda <- auc_results$results[[which(
-  classifier_files$classifier == "Full LASSO"
-)]]$pooled
+# Get pooled AUC values
+auc_lambda <- auc_results$results[[
+  which(
+    classifier_files$classifier == "Full LASSO"
+  )
+]]$pooled
 
-auc_n3 <- auc_results$results[[which(
-  classifier_files$classifier == "3-feature LASSO"
-)]]$pooled
+auc_n3 <- auc_results$results[[
+  which(
+    classifier_files$classifier == "3-feature LASSO"
+  )
+]]$pooled
 
 
 # Legend labels with AUC values
@@ -380,6 +393,7 @@ classifier_labels_prot <- c(
 
 
 # Create ROC plot
+
 roc_plot_gg_prot <- ggplot() +
 
   # Diagonal reference line
@@ -431,8 +445,8 @@ roc_plot_gg_prot <- ggplot() +
   # Colors
   scale_color_manual(
     values = c(
-      "Full LASSO" = "#CC79A7",
-      "3-protein classifier" = "#56B4E9"
+      "Full LASSO" = full_lasso_color,
+      "3-protein classifier" = three_target_color
     ),
     labels = classifier_labels_prot,
     name = NULL
@@ -440,25 +454,25 @@ roc_plot_gg_prot <- ggplot() +
 
   scale_fill_manual(
     values = c(
-      "Full LASSO" = "#CC79A7",
-      "3-protein classifier" = "#56B4E9"
+      "Full LASSO" = full_lasso_color,
+      "3-protein classifier" = three_target_color
     ),
     name = NULL,
     guide = "none"
   ) +
 
-  coord_fixed() +
+  coord_fixed(
+  ) +
 
   # Labels
   labs(
-    title = "Full LASSO vs 3-protein classifier",
+    title = "Performance of multi-protein classifiers",
     x = "Specificity",
     y = "Sensitivity"
   ) +
 
   # Theme
   theme_classic(
-    base_size = 12,
     base_family = "Arial"
   ) +
 
@@ -470,7 +484,7 @@ roc_plot_gg_prot <- ggplot() +
     ),
     axis.text = element_text(
       family = "Arial",
-      size = 12,
+      size = 16,
       color = "black"
     ),
     axis.title = element_text(
@@ -486,11 +500,11 @@ roc_plot_gg_prot <- ggplot() +
     ),
     legend.text = element_text(
       family = "Arial",
-      size = 12,
+      size = 16,
       face = "plain"
     ),
     legend.key.size = unit(1.2, "lines"),
-    legend.position = c(0.62, 0.18),
+    legend.position = c(0.58, 0.18),
     legend.background = element_rect(
       fill = "white",
       color = NA
@@ -498,12 +512,9 @@ roc_plot_gg_prot <- ggplot() +
   )
 
 
-print(roc_plot_gg_prot)
-
-
-# Export as editable vector PDF
+# Export as PDF
 ggsave(
-  file.path(results_dir, "ROC_lambda_vs_n3_overlaid_prot_gg.pdf"),
+  file.path(plots_dir, "(4C)_ROC_lambda_vs_n3_overlaid_prot_gg.pdf"),
   roc_plot_gg_prot,
   width = 6.5,
   height = 6.5,
@@ -514,10 +525,7 @@ ggsave(
 # Save Figure 4C plot object for patchwork
 saveRDS(
   roc_plot_gg_prot,
-  file.path(
-    results_dir,
-    "figure4C_protein.rds"
-  )
+  file.path(prot_results_dir,"figure4C.rds")
 )
 
 
@@ -532,32 +540,6 @@ message(
   "DeLong test p-value: ",
   signif(delong_test$p.value, 3)
 )
-
-
-
-
-
-
-```
-
-```{r}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

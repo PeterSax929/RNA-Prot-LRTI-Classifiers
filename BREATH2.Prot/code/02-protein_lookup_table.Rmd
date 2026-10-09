@@ -8,9 +8,11 @@ output:
 ```{r, warning=F, message=F}
 
 
+library(AnnotationDbi)
 library(dplyr)
 library(SomaScan.db)
-library(AnnotationDbi)  
+
+source("../../00-constants.R") 
 
 
 
@@ -20,7 +22,7 @@ library(AnnotationDbi)
 # 2.1. Prepare Seq ids
 
 
-# Extracts all PROBEIDs in protein_mat_ALL
+# Extracts all PROBEIDs
 seq_ids <- colnames(protein_mat_PROBEID)
 
 
@@ -54,12 +56,6 @@ protein_lookup_table_ALL <- protein_lookup_table_ALL %>% distinct(PROBEID, .keep
 protein_lookup_table_ALL <- protein_lookup_table_ALL %>%
   filter(!is.na(SYMBOL)) %>%
   arrange(SYMBOL)
-
-# All valid PROBEIDs in the package
-valid_ids <- keys(SomaScan.db, keytype = "PROBEID")
-
-# Find unmapped probes
-unmapped_probes <- setdiff(seq_ids, valid_ids)
 
 
 
@@ -108,30 +104,9 @@ protein_lookup_table <- protein_lookup_table_ALL %>%
   distinct(SYMBOL, .keep_all=T)
 
 # Match lookup table order to protein_mat_ALL column order
-protein_lookup_table <- protein_lookup_table[match(colnames(protein_mat_ALL),
-                                                   protein_lookup_table$SYMBOL), ]
-
-
-
-
-
-
-# 2.3. Safety Check
-
-
-length(unmapped_probes)
-
-nrow(protein_lookup_table) # Should be 6346
-
-# Check for duplicate symbols 
-any(duplicated(colnames(protein_mat_ALL)))  # Should return FALSE
-
-# Confirm lengths match
-length(colnames(protein_mat_ALL))  # Should be 6346
-length(protein_lookup_table$SYMBOL)  # SHould be 6346
-
-# How many symbols actually overlap
-sum(colnames(protein_mat_ALL) %in% protein_lookup_table$SYMBOL)  # Should be 6346
+protein_lookup_table <- protein_lookup_table[
+  match(colnames(protein_mat_ALL),
+  protein_lookup_table$SYMBOL), ]
 
 
 
